@@ -9,8 +9,8 @@ stdenv.mkDerivation {
     rlwrap
     gnumake
     readline
-    python27Packages.python
-    python27Packages.lxml
+    python3
+    python3Packages.lxml
   ];
 
   shellHook = ''
