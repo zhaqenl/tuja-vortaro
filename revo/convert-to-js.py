@@ -10,37 +10,39 @@ from lxml import etree
 def get_entities():
     entities = {}
 
-    with open('src/dtd/vokosgn.dtd', 'rb') as f:
-        dtd = etree.DTD(f)
-        for entity in dtd.iterentities():
-            entities[entity.name] = entity.content
-
-    with open('src/dtd/vokomll.dtd', 'rb') as f:
-        dtd = etree.DTD(f)
-        for entity in dtd.iterentities():
-            entities[entity.name] = entity.content
+    # Load entities from all DTDs referenced by vokoxml.dtd.
+    for dtd_file in ['src/dtd/vokosgn.dtd', 'src/dtd/vokomll.dtd',
+                      'src/dtd/vokoenh.dtd', 'src/dtd/vokourl.dtd']:
+        with open(dtd_file, 'rb') as f:
+            dtd = etree.DTD(f)
+            for entity in dtd.iterentities():
+                if entity.content is not None:
+                    entities[entity.name] = entity.content
 
     # Seed some default entities.
     entities[u'apos'] = "'"
     entities[u'quot'] = '"'
 
-    # Entities sometimes refer to a canonical entity.
-    for key, value in entities.iteritems():
-        if '&' in value and ';' in value:
-            pre  = value[:value.index('&')]
-            sym  = value[value.index('&')+1 : value.index(';')]
-            post = value[value.index(';')+1:]
-
-            entities[key] = u"%s%s%s" % (pre, entities[sym], post)
+    # Resolve nested entity references (e.g. '&a_damma;&a_w;').
+    def resolve(val):
+        return re.sub(r'&(\w+);', lambda m: entities.get(m.group(1), m.group(0)), val)
+    for key in entities:
+        entities[key] = resolve(entities[key])
 
     return entities
 
 
-# Makes a one-time-use XMLParser object.
-def make_parser(entities):
-    parser = ET.XMLParser()
-    parser.entity = entities
-    return parser
+# Parse an XML file, resolving custom entities by text substitution.
+# (In Python 3, XMLParser.entity is read-only.)
+def parse_xml(xml_path, entities):
+    with open(xml_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    content = re.sub(r'<!DOCTYPE[^>]*>', '', content)
+    # Use regex to replace only complete entity references (avoid partial matches).
+    def replace_entity(m):
+        return entities.get(m.group(1), m.group(0))
+    content = re.sub(r'&(\w+);', replace_entity, content)
+    return ET.ElementTree(ET.fromstring(content))
 
 
 # Given a root and a kap Element, create the full Esperanto word(s).
@@ -62,12 +64,12 @@ def kap_to_esperanto(root, kap):
         word = word.replace(',,', ',')
         word = word.replace('  ', ' ')
 
-    return re.sub('\s+', ' ', word)
+    return re.sub(r'\s+', ' ', word)
 
 
 # Create language text out of a trd translation element.
 def trd_to_text(trd):
-    return re.sub('\s+', ' ', ''.join(trd.itertext()))
+    return re.sub(r'\s+', ' ', ''.join(trd.itertext()))
 
 
 def mark_translation(esperanto, lang, translation):
@@ -110,8 +112,7 @@ def main():
     xmlfiles = ['src/xml/' + f for f in os.listdir('src/xml') if f[-4:] == '.xml']
 
     for xml in xmlfiles:
-        parser = make_parser(entities)
-        tree = ET.parse(xml, parser=parser)
+        tree = parse_xml(xml, entities)
         root = tree.getroot().find('art')
 
         radiko = root.find('kap').find('rad').text
@@ -127,27 +128,26 @@ def main():
                 extract_translations(esperanto, snc)
 
     # Output the dictionaries.
-    for lang, entries in dictionary.iteritems():
-        with open('revo-' + lang + '.js', 'wb') as js:
+    for lang, entries in dictionary.items():
+        with open('revo-' + lang + '.js', 'w') as js:
 
-            print >>js, '// @license magnet:?xt=urn:btih:cf05388f2679ee054f2beb29a391d25f4e673ac3&dn=gpl-2.0.txt GPL-v2'
-            print >>js, '// De La Reta Vortaro'
-            print >>js, "'use strict';"
-            print >>js, 'var revo_%s = [' % lang
+            print('// @license magnet:?xt=urn:btih:cf05388f2679ee054f2beb29a391d25f4e673ac3&dn=gpl-2.0.txt GPL-v2', file=js)
+            print('// De La Reta Vortaro', file=js)
+            print("'use strict';", file=js)
+            print('var revo_%s = [' % lang, file=js)
 
             ordered = sorted(entries.items())
             for entry in ordered:
                 eo = entry[0].replace('"', "'");
                 tra = '","'.join(entry[1])
-                print >>js, ('["%s","%s"],' % (eo, tra)).encode("utf-8")
+                print('["%s","%s"],' % (eo, tra), file=js)
 
-            print >>js, '];'
+            print('];', file=js)
 
             # Construct a lowercase version of the dictionary.
             # Done on load since it's very fast, even on phones.
-            print >>js, 'var revo_%s_lower = revo_%s.map(function(a) { return a.map(function(x) { return x.toLowerCase(); }) });' % (lang, lang)
-            print >>js, '// @license-end'
+            print('var revo_%s_lower = revo_%s.map(function(a) { return a.map(function(x) { return x.toLowerCase(); }) });' % (lang, lang), file=js)
+            print('// @license-end', file=js)
 
 if __name__ == '__main__':
     main()
-

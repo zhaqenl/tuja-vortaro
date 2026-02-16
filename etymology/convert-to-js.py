@@ -5,9 +5,9 @@
 etym = open('etymology.txt', 'r')
 js = open('etymology.js', 'w')
 
-print >>js, "// @license magnet:?xt=urn:btih:90dc5c0be029de84e523b9b3922520e79e0e6f08&dn=cc0.txt CC0-1.0"
-print >>js, "'use strict';"
-print >>js, 'var etymology = ['
+print("// @license magnet:?xt=urn:btih:90dc5c0be029de84e523b9b3922520e79e0e6f08&dn=cc0.txt CC0-1.0", file=js)
+print("'use strict';", file=js)
+print('var etymology = [', file=js)
 
 # Each line contains an Esperanto word, followed by "=" and a list of sources.
 # Instead of "=", some lines actually just contain an explanation, enclosed
@@ -24,10 +24,10 @@ for line in etym.readlines():
     esperanto = esperanto.strip()
     sources = sources.strip()
 
-    print >>js, '["%s","%s"],' % (esperanto, sources)
+    print('["%s","%s"],' % (esperanto, sources), file=js)
 
-print >>js, '];'
-print >>js, "// @license-end"
+print('];', file=js)
+print("// @license-end", file=js)
 
 etym.close()
 js.close()
